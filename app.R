@@ -150,14 +150,14 @@ ui <- fluidPage(
                   tabPanel("Normalized",
                            dataTableOutput("data_normalized")),
                   
-                  tabPanel("-Log2 Pval",
+                  tabPanel("-Log10 Pval",
                            dataTableOutput("data_log_pval")),
                   
-                  tabPanel("Fold-change",
+                  tabPanel("Log2 Fold-change",
                            dataTableOutput("data_fc")),
                   
                   tabPanel("Volcano",
-                           plotOutput("volcano")))
+                           plotlyOutput("volcano")))
     )
   )
 )
@@ -281,6 +281,8 @@ server <- function(input, output)
   
   # Merges -log2 of pvals and log10 fold-change values together  ----
   data_merged <- reactive({
+    data_fc <- data_fc()
+    data_log_pval <- data_log_pval()
     cbind(data_fc[1], data_log_pval[1])
   })
   
@@ -295,9 +297,9 @@ server <- function(input, output)
   # Creates volcano plot
   volcano <- reactive({
     dat <- data_rm_nan()
-    p1 <- plot_ly(x=dat[1], y=dat[4])
+    p1 <- plot_ly(x=dat[1], y=dat[2])
     # p2 <- plot_ly(x=dat[2], y=dat[5])
-    subplot(p1)
+    p1
   })
   
   
@@ -318,7 +320,7 @@ server <- function(input, output)
     data_fc()
   })
   
-  output$volcano <- renderPlot({
+  output$volcano <- renderPlotly({
     volcano()
   })
   
