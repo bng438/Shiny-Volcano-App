@@ -1,0 +1,17 @@
+# Shiny-Volcano-App
+Shiny app that creates volcano plots
+
+1. Download R and RStudio
+2. Download the "Essentials" file
+3. Run the "Essentials" file by clicking on "source" in RStudio
+4. In the console, type: runGitHub("Shiny-Volcano-App","bng438")
+
+Troubleshooting Tips:
+  a.) Make sure "Essentials" file is up to date
+  b.) Re-run "Essentials" file
+  c.) Make sure the runGitHub command is typed out correctly
+  
+  
+Download Links
+R - http://lib.stat.cmu.edu/R/CRAN/
+RStudio - https://www.rstudio.com/products/rstudio/download/#download
