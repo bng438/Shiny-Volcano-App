@@ -130,6 +130,9 @@ ui <- fluidPage(
       # Stores number of replicates per group
       numericInput("num_replicates", h5("Replicates per Group"), value=1, min=1),
       
+      numericInput("pval_threshold", h5("Pval Threshold"), value=.05, min=0),
+      numericInput("fc_threshold", h5("Log2 Fold-change Threshold"), value=1, min=0),
+      
       # Updates user inputs
       submitButton("Refresh", icon("refresh"))
     ),
@@ -291,15 +294,33 @@ server <- function(input, output)
   data_rm_nan <- reactive({
     merged <- data_merged()
     merged[is.nan(merged)] <- 0
+    merged
   })
   
   
   # Creates volcano plot
   volcano <- reactive({
     dat <- data_rm_nan()
-    p1 <- plot_ly(x=dat[1], y=dat[2])
-    # p2 <- plot_ly(x=dat[2], y=dat[5])
-    p1
+    og_data <- data_rm0()
+    dat2 <- cbind(og_data["Description"], dat)
+    
+    p1 <- plot_ly(x=dat2[[2]], y=dat2[[5]],
+                  text = dat2[[1]]) %>%
+      add_markers(symbol=I(1)) %>%
+      layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
+    
+    p2 <- plot_ly(x=dat2[[3]], y=dat2[[6]],
+                  text = dat2[[1]]) %>%
+      add_markers(symbol=I(1)) %>%
+      layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
+    
+    p3 <- plot_ly(x=dat2[[4]], y=dat2[[7]],
+                  text = dat2[[1]]) %>%
+      add_markers(symbol=I(1)) %>%
+      layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
+    
+    subplot(p1,p2,p3)
+    
   })
   
   
@@ -313,7 +334,7 @@ server <- function(input, output)
   })
   
   output$data_log_pval <- renderDataTable({
-    data_pval()
+    data_log_pval()
   })
   
   output$data_fc <- renderDataTable({
