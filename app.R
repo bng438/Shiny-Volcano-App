@@ -89,11 +89,11 @@ toAllGroups <- function(dat, num_repl, func)
       }
       
       names(result)[length(result)] <-
-      paste(func_heading,
-            substr(names(dat[i]), 1, length(names(dat[i]))),
-            "vs",
-            substr(names(dat[j]), 1, length(names(dat[j]))))
-
+        paste(func_heading,
+              substr(names(dat[i]), 1, length(names(dat[i]))),
+              "vs",
+              substr(names(dat[j]), 1, length(names(dat[j]))))
+      
     }
   }
   return(select(result, -1))
@@ -286,7 +286,7 @@ server <- function(input, output)
   data_merged <- reactive({
     data_fc <- data_fc()
     data_log_pval <- data_log_pval()
-    cbind(data_fc[1], data_log_pval[1])
+    cbind(data_fc, data_log_pval)
   })
   
   
@@ -302,26 +302,35 @@ server <- function(input, output)
   volcano <- reactive({
     dat <- data_rm_nan()
     og_data <- data_rm0()
-    dat2 <- cbind(og_data["Description"], dat)
+    num_comparisons <- ncol(dat) / 2
+    dat <- cbind(og_data["Description"], dat)
+
     
-    p1 <- plot_ly(x=dat2[[2]], y=dat2[[5]],
-                  text = dat2[[1]]) %>%
-      add_markers(symbol=I(1)) %>%
-      layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
+    createPlot <- function(index)
+    {
+      plot_ly(x=dat[[index+1]], 
+              y=dat[[index+num_comparisons+1]],
+              text=dat[[1]],
+              height=1000) %>%
+        add_markers(symbol=I(1)) %>%
+        layout(xaxis=list(title="Log2 Fold-change"), 
+               yaxis=list(title="-Log2 P-val"))
+    }
     
-    p2 <- plot_ly(x=dat2[[3]], y=dat2[[6]],
-                  text = dat2[[1]]) %>%
-      add_markers(symbol=I(1)) %>%
-      layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
-    
-    p3 <- plot_ly(x=dat2[[4]], y=dat2[[7]],
-                  text = dat2[[1]]) %>%
-      add_markers(symbol=I(1)) %>%
-      layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
-    
-    subplot(p1,p2,p3)
-    
+    # Recurssive plotting
+    plotList <- function(nplot) 
+    {
+      lapply(seq_len(nplot), createPlot)
+    }
+    subplot(plotList(num_comparisons),
+            nrows=num_comparisons,
+            shareX=TRUE, 
+            shareY=TRUE,
+            titleX=TRUE,
+            titleY=TRUE)
   })
+  
+  
   
   
   # Renders all outputs  ----
