@@ -4,7 +4,7 @@
 
 
 # Installs Packages  ----
-packages <- c("plyr", "tidyverse", "plotly", "pheatmap", 
+packages <- c("plyr", "tidyverse", "plotly", 
               "gridExtra", "ggseqlogo", "DT",
               "RDocumentation", "runjags", "pracma", "shiny")
 
@@ -26,7 +26,6 @@ library(plyr)
 library(tidyverse)
 library(plotly)
 library(readxl)
-library(pheatmap)
 library(gridExtra)
 library(ggseqlogo)
 library(DT)
