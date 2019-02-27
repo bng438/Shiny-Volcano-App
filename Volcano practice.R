@@ -4,8 +4,8 @@
 
 
 # Installs Packages  ------------------------------
-packages <- c("plyr", "tidyverse", "plotly", "pheatmap", 
-              "gridExtra", "VennDiagram", "ggseqlogo",
+packages <- c("plyr", "tidyverse", "plotly", 
+              "gridExtra", "ggseqlogo",
               "RDocumentation", "runjags", "pracma", "shiny")
 
 for (i in seq_along(packages))
@@ -24,12 +24,8 @@ rm(list = ls())
 # Loads Packages  ------------------------------
 library(plyr)
 library(tidyverse)
-library(ggplot2)
 library(readxl)
-library(gplots)
-library(pheatmap)
 library(gridExtra)
-library(VennDiagram)
 library(ggseqlogo)
 library(runjags)
 library(pracma)
@@ -39,7 +35,7 @@ library(shiny)
 
 
 # Imports Data   ------------------------------
-dat <- read_excel("Volcano practice dataset.xlsx")
+dat <- read_excel("Copy.xlsx")
 
 
 p1 <- plot_ly(x=dat[[2]], y=dat[[5]],
@@ -48,10 +44,74 @@ p1 <- plot_ly(x=dat[[2]], y=dat[[5]],
   layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
 
 
-p2 <- plot_ly(x=dat[[4]], y=dat[[7]], 
+p2 <- plot_ly(x=dat[[3]], y=dat[[6]], 
               type="scatter",
               mode="markers",
               text = dat[[1]]) %>%
   layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
+
+
+p3 <- plot_ly(x=dat[[4]], y=dat[[7]], 
+              type="scatter",
+              mode="markers",
+              text = dat[[1]]) %>%
+  layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
+
+
+plotList <- function(nplot) 
+{
+  if (nplot != 0)
+  {
+    subplot(,plotList(nplot))
+  }
+  else
+  {
+    plot_ly()
+  }
+}
+
+
+for (i in 1:((ncol(dat)-1)/2))
+{
+  plot_ly(x=dat[[i+1]], y=dat[[i+4]],
+          text=dat[[1]]) %>%
+    add_markers(symbol=I(1)) %>%
+    layout(xaxis=list(range=c(-2.2)), yaxis=list(range=c(0,5.2)))
+}
+
+
+
+
+
+
+
+
+
+
+volcano <- reactive({
+  dat <- data_rm_nan()
+  og_data <- data_rm0()
+  dat2 <- cbind(og_data["Description"], dat)
+  
+  p1 <- plot_ly(x=dat2[[2]], y=dat2[[5]],
+                text = dat2[[1]]) %>%
+    add_markers(symbol=I(1)) %>%
+    layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
+  
+  p2 <- plot_ly(x=dat2[[3]], y=dat2[[6]],
+                text = dat2[[1]]) %>%
+    add_markers(symbol=I(1)) %>%
+    layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
+  
+  p3 <- plot_ly(x=dat2[[4]], y=dat2[[7]],
+                text = dat2[[1]]) %>%
+    add_markers(symbol=I(1)) %>%
+    layout(xaxis=list(range=c(-2,2)), yaxis=list(range=c(0,5.2)))
+  
+  subplot(p1,p2,p3)
+  
+})
+
+
 
 
