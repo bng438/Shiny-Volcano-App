@@ -1,15 +1,15 @@
 # Shiny-Volcano-App
-Shiny app that creates volcano plots
+Shiny app that creates volcano plots from TMT labeled experiments
 
 1. Download R and RStudio
 2. Download the "Essentials" file
-3. Run the "Essentials" file by clicking on "source" in RStudio
+3. Open the "Essentials" file in RStudio
+4. Run the "Essentials" file by pressing Crtl+Shift+S
 4. In the console, type: runGitHub("Shiny-Volcano-App","bng438")
 
 Troubleshooting Tips:
-  a.) Check that the "Essentials" file being used is up to date
-  b.) Re-run "Essentials" file
-  c.) Make sure exported excel file does not have abundance ratios included
+  a.) Check that the "Essentials" file being used is up to date and re-run the file
+  b.) Make sure excel file in use does not have abundance ratios included
   d.) Double check that the runGitHub command is typed out correctly
   
   
