@@ -130,7 +130,7 @@ ui <- fluidPage(
       numericInput("num_replicates", h5("Replicates per Group"), value=1, min=1),
       
       numericInput("pval_threshold", h5("Pval Threshold"), value=.05, min=0),
-      numericInput("fc_threshold", h5("Log2 Fold-change Threshold"), value=1, min=0),
+      numericInput("fc_threshold", h5("Log2 Fold-change Threshold"), value=.5, min=0),
       
       # Updates user inputs
       submitButton("Refresh", icon("refresh"))
@@ -289,7 +289,7 @@ server <- function(input, output)
   })
   
   
-  # Replaces NAN error values with 0
+  # Replaces NAN error values with 0  ----
   data_rm_nan <- reactive({
     merged <- data_merged()
     merged[is.nan(merged)] <- 0
@@ -297,63 +297,98 @@ server <- function(input, output)
   })
   
   
-  # Creates volcano plot
+  # Creates volcano plot  ----
   volcano <- reactive({
     dat <- data_rm_nan()
     og_data <- data_rm0()
     num_comparisons <- ncol(dat) / 2
     dat <- cbind(og_data["Description"], dat)
-
+    
+    createVline <- function(x) 
+    {
+      list(
+        type="line",
+        y0=0,
+        y1=1,
+        yref="paper",
+        x0=x,
+        x1=x,
+        line=list(color="pink")
+      )
+    }
+    
+    createHline <- function(y)
+    {
+      list(
+        type="line",
+        x0=0,
+        x1=1,
+        xref="paper",
+        y0=y,
+        y1=y,
+        line=list(color="pink")
+      )
+    }
+    
+    
     
     createPlot <- function(index)
     {
       plot_ly(x=dat[[index+1]], 
               y=dat[[index+num_comparisons+1]],
-              text=dat[[1]],
-              height=1000) %>%
+              hovertext=dat[[1]],
+              name=names(dat)[index+1]) %>%
         add_markers(symbol=I(1)) %>%
-        layout(xaxis=list(title="Log2 Fold-change"), 
-               yaxis=list(title="-Log2 P-val"))
+        layout(xaxis=list(title="Log2 Fold-change"),
+               yaxis=list(title="-Log10 p-val"))
+    # %>%
+    # add_markers(symbol=I(1)) %>%
+    # layout(shapes=list(createHline(-log10(input$pval_threshold)),
+                       # createVline(input$fc_threshold),
+                       # createVline(-(input$fc_threshold)))) %>%
+    # layout(xaxis=list(title="Log2 Fold-change"), 
+           # yaxis=list(title="-Log2 P-val"))
     }
     
-    # Recurssive plotting
+    
     plotList <- function(nplot) 
     {
       lapply(seq_len(nplot), createPlot)
     }
+    
     subplot(plotList(num_comparisons),
-            nrows=num_comparisons,
-            shareX=TRUE, 
+            # nrows=num_comparisons,
+            shareX=TRUE,
             shareY=TRUE,
             titleX=TRUE,
             titleY=TRUE)
   })
-  
-  
-  
-  
-  # Renders all outputs  ----
-  output$data_tidy <- renderDataTable({
-    data_selected()
-  })
-  
-  output$data_normalized <- renderDataTable({
-    data_normalized()
-  })
-  
-  output$data_log_pval <- renderDataTable({
-    data_log_pval()
-  })
-  
-  output$data_fc <- renderDataTable({
-    data_fc()
-  })
-  
-  output$volcano <- renderPlotly({
-    volcano()
-  })
-  
-  
+
+
+
+
+# Renders all outputs  ----
+output$data_tidy <- renderDataTable({
+  data_selected()
+})
+
+output$data_normalized <- renderDataTable({
+  data_normalized()
+})
+
+output$data_log_pval <- renderDataTable({
+  data_log_pval()
+})
+
+output$data_fc <- renderDataTable({
+  data_fc()
+})
+
+output$volcano <- renderPlotly({
+  volcano()
+})
+
+
 }
 
 
