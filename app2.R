@@ -144,7 +144,7 @@ ui <- fluidPage(
                   
                   # Tab for inputing TMT Labels 
                   tabPanel("TMT Label Map",
-                           uiOutput("tmt")),
+                           uiOutput("tmt2")),
                   
                   tabPanel("Raw Data",
                            dataTableOutput("data_tidy")),
@@ -159,12 +159,7 @@ ui <- fluidPage(
                            dataTableOutput("data_fc")),
                   
                   tabPanel("Volcano",
-                           plotlyOutput("volcano")),
-                  
-                  tabPanel("Misc",
-                           textOutput("cv"),
-                           textOutput("rsq"),
-                           textOutput("num_protein")))
+                           plotlyOutput("volcano")))
     )
   )
 )
@@ -195,6 +190,51 @@ server <- function(input, output)
     tmt_prompt()
   })
   
+  getSampleSpot <- function(a,b)
+  {
+  return(a * input$num_replicates - (input$num_replicates - b))
+  }
+  
+  
+  tmt_prompt2 <- reactive({
+    # getSampleSpot <- function(a,b) 
+    # {
+    #   return(a * input$num_replicates - (input$num_replicates - b))
+    # }
+    
+    
+    samples <- tagList()
+    for (i in 1:input$num_groups)
+    {
+      for (j in 1:input$num_replicates) 
+      {
+        if (j == 1)
+        {
+          for (z in 1:input$num_replicates)
+          {
+            samples[[getSampleSpot(i,z)]] <- tagList()
+          }
+          samples[[getSampleSpot(i,j)]][[1]] <- textInput(letters[i], paste("Sample", i,"Name:"))
+          
+          # if (input$num_replicates != 1)
+          # {
+          #   for (y in 2:input$num_replicates)
+          #   {
+          #     # samples[[getSampleSpot(i,y)]][[1]] <- samples[[getSampleSpot(i,j)]][[1]]
+          #   }
+          # }
+        }
+        samples[[getSampleSpot(i,j)]][[2]] <- 
+          textInput(letters[(getSampleSpot(i,j)+plex())], paste("Label:"))
+      }
+    }
+    samples
+  })
+  
+  
+  
+  
+  
   
   # Gets sample name and labels user provided  ----
   getSamples <- reactive({
@@ -208,6 +248,25 @@ server <- function(input, output)
   })
   
   
+  
+  getSamples2 <- reactive({
+    samples <- as.data.frame(matrix(0,2,plex()))
+    for ( i in 1:input$num_groups)
+    {
+      for (j in 1:input$num_replicates)
+      {
+        samples[getSampleSpot(i,j)] <- c(input[[letters[i]]],
+                                         input[[letters[(getSampleSpot(i,j)+plex())]]])
+      }
+    }
+    samples
+  })
+  
+  
+  
+  
+  
+  
   # Replaces missing values in dataset with 0  ----
   data_rm0 <- reactive({
     input$data$datapath %>%
@@ -218,7 +277,7 @@ server <- function(input, output)
   
   # Renames column names with corresponding sample name  ----
   data_rename <- reactive({
-    samples <- getSamples()
+    samples <- getSamples2()
     dat <- data_rm0()
     
     for (i in 1:ncol(dat))
@@ -237,7 +296,7 @@ server <- function(input, output)
   
   # Removes all columns except protein abundances  ----
   data_selected <- reactive({
-    samples <- getSamples()
+    samples <- getSamples2()
     dat <- data_rename()
     selected <- as.data.frame(matrix(0,nrow(dat),plex()))
     
@@ -253,7 +312,7 @@ server <- function(input, output)
   # Normalizes data about median  ----
   data_normalized <- reactive({
     dat <- data_selected()
-    samples <- getSamples()
+    samples <- getSamples2()
     sums <- colSums(dat)
     median <- median(sums)
     percent_median <- median / sums
@@ -308,33 +367,51 @@ server <- function(input, output)
     og_data <- data_rm0()
     num_comparisons <- ncol(dat) / 2
     dat <- cbind(og_data["Description"], dat)
-    pval <- input$pval_threshold
-    fc <- input$fc_threshold
+    
+    createVline <- function(x) 
+    {
+      list(
+        type="line",
+        y0=0,
+        y1=1,
+        yref="paper",
+        x0=x,
+        x1=x,
+        line=list(color="pink")
+      )
+    }
+    
+    createHline <- function(y)
+    {
+      list(
+        type="line",
+        x0=0,
+        x1=1,
+        xref="paper",
+        y0=y,
+        y1=y,
+        line=list(color="pink")
+      )
+    }
+    
+    
     
     createPlot <- function(index)
     {
       plot_ly(x=dat[[index+1]], 
               y=dat[[index+num_comparisons+1]],
-              text=dat[[1]],
+              hovertext=dat[[1]],
               name=names(dat)[index+1]) %>%
         add_markers(symbol=I(1)) %>%
-        add_lines(y=(-log10(pval)),
-                  line=list(color="pink"),
-                  showlegend=FALSE,
-                  hoverinfo= "text",
-                  text="P-val Threshold") %>%
-        add_lines(x=fc,
-                  line=list(color="pink"),
-                  showlegend=FALSE,
-                  hoverinfo="text",
-                  text="Fold-change Threshold") %>%
-        add_lines(x=-fc,
-                  line=list(color="pink"),
-                  showlegend=FALSE,
-                  hoverinfo="text",
-                  text="Fold-change Threshold") %>%
         layout(xaxis=list(title="Log2 Fold-change"),
                yaxis=list(title="-Log10 p-val"))
+      # %>%
+      # add_markers(symbol=I(1)) %>%
+      # layout(shapes=list(createHline(-log10(input$pval_threshold)),
+      # createVline(input$fc_threshold),
+      # createVline(-(input$fc_threshold)))) %>%
+      # layout(xaxis=list(title="Log2 Fold-change"), 
+      # yaxis=list(title="-Log2 P-val"))
     }
     
     
@@ -344,37 +421,43 @@ server <- function(input, output)
     }
     
     subplot(plotList(num_comparisons),
+            # nrows=num_comparisons,
             shareX=TRUE,
             shareY=TRUE,
             titleX=TRUE,
             titleY=TRUE)
   })
-
-
-
-
-# Renders all outputs  ----
-output$data_tidy <- renderDataTable({
-  data_selected()
-})
-
-output$data_normalized <- renderDataTable({
-  data_normalized()
-})
-
-output$data_log_pval <- renderDataTable({
-  data_log_pval()
-})
-
-output$data_fc <- renderDataTable({
-  data_fc()
-})
-
-output$volcano <- renderPlotly({
-  volcano()
-})
-
-
+  
+  
+  
+  
+  # Renders all outputs  ----
+  output$tmt2 <- renderUI({
+    tmt_prompt2()
+  })
+  
+  output$data_tidy <- renderDataTable({
+    data_selected()
+    # getSamples2()
+  })
+  
+  output$data_normalized <- renderDataTable({
+    data_normalized()
+  })
+  
+  output$data_log_pval <- renderDataTable({
+    data_log_pval()
+  })
+  
+  output$data_fc <- renderDataTable({
+    data_fc()
+  })
+  
+  output$volcano <- renderPlotly({
+    volcano()
+  })
+  
+  
 }
 
 
