@@ -2,7 +2,7 @@
 Shiny app that creates volcano plots from TMT labeled experiments
 
 1. Download R and RStudio
-2. Download the "Essentials" file
+2. Download the "Essentials" and "TMT Input Template" files
 3. Open the "Essentials" file in RStudio
 4. Run the "Essentials" file by pressing Crtl+Shift+S
 5. In the console, type: runGitHub("Shiny-Volcano-App","bng438")
