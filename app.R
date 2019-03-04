@@ -71,13 +71,15 @@ toAllGroups <- function(dat, num_repl, func)
   {
     for (j in seq((num_repl + i), (ncol(dat) - num_repl + 1), by=num_repl))
     {
+      # Applies the specified function func to all rows in the
+      # two groups currently being compared
       result[(length(result) + 1)] <-
         adply(.data=dat, .margins=1, .fun=get(func),
               grp1=c(i : (i + num_repl - 1)),
               grp2=c(j : (j + num_repl - 1))) %>%
         as_tibble() %>% select("V1")
       
-      # Determines column heading depending on function user inputed
+      # Determines column heading depending on function specified
       if (strcmp(func, "pVal"))
       {
         func_heading <- "Pval"
@@ -87,12 +89,12 @@ toAllGroups <- function(dat, num_repl, func)
         func_heading <- "Fold-change"
       }
       
+      # Renames column heading
       names(result)[length(result)] <-
         paste(func_heading,
               substr(names(dat[i]), 1, length(names(dat[i]))),
               "vs",
               substr(names(dat[j]), 1, length(names(dat[j]))))
-      
     }
   }
   return(select(result, -1))
@@ -191,12 +193,8 @@ server <- function(input, output)
     samples
   })
   
-  output$tmt <- renderUI({
-    tmt_prompt()
-  })
   
-  
-  # Gets sample name and labels user provided  ----
+  # Gets sample names and labels user provided  ----
   getSamples <- reactive({
     samples <- as.data.frame(matrix(0,2,plex()))
     for (i in 1:plex())
@@ -274,19 +272,19 @@ server <- function(input, output)
   })
   
   
-  # Calculates negative log of p-values  ----
+  # Calculates negative log10 of p-values  ----
   data_log_pval <- reactive({ 
     -log10(data_pval())
   })
   
   
-  # Calculates Log2 fold-change among all groups  ----
+  # Calculates log2 fold-change among all groups  ----
   data_fc <- reactive({
     toAllGroups(data_normalized(), input$num_replicates, "foldChange")
   })
   
   
-  # Merges -log2 of pvals and log10 fold-change values together  ----
+  # Merges -log10 pval and log2 fold-change values together  ----
   data_merged <- reactive({
     data_fc <- data_fc()
     data_log_pval <- data_log_pval()
@@ -306,77 +304,111 @@ server <- function(input, output)
   volcano <- reactive({
     dat <- data_rm_nan()
     og_data <- data_rm0()
-    num_comparisons <- ncol(dat) / 2
-    dat <- cbind(og_data["Description"], dat)
     pval <- input$pval_threshold
     fc <- input$fc_threshold
     
+    # Determines number of group comparisons
+    num_comparisons <- ncol(dat) / 2
+    
+    # Attaches protein descriptions to the merged dataset
+    # which contains fold-change and pval
+    dat <- cbind(og_data["Description"], dat)
+
+    
+    # Creates individual volcano plot
     createPlot <- function(index)
     {
+      # plot_ly: Plots fold-change on x-axis and pval on y-axis
+      # text: Specifies that protein description appear when a 
+      #       datapoint is hovered over
+      # name: Specifies the name that appears on the legend for
+      #       that specific dataset
       plot_ly(x=dat[[index+1]], 
               y=dat[[index+num_comparisons+1]],
               text=dat[[1]],
-              name=names(dat)[index+1]) %>%
+              name=substr(names(dat)[index+1],11,nchar(names(dat)[index+1]))) %>%
+        
+        # Specifies that each datapoint is a hollow circle
         add_markers(symbol=I(1)) %>%
+        
+        # Creates a horiztonal line layered over the origianl
+        # plot, representing the p-val threshold
         add_lines(y=(-log10(pval)),
                   line=list(color="pink"),
                   showlegend=FALSE,
                   hoverinfo= "text",
                   text="P-val Threshold") %>%
+        
+        # Creates a vertical line layered over the original
+        # plot, representing positive fold-change threshold
         add_lines(x=fc,
                   line=list(color="pink"),
                   showlegend=FALSE,
                   hoverinfo="text",
                   text="Fold-change Threshold") %>%
+        
+        # Creates a vertical line layered over the original
+        # plot, representing negative fold-change threshold
         add_lines(x=-fc,
                   line=list(color="pink"),
                   showlegend=FALSE,
                   hoverinfo="text",
                   text="Fold-change Threshold") %>%
+        
+        # Specifies x and y axis titles
         layout(xaxis=list(title="Log2 Fold-change"),
                yaxis=list(title="-Log10 p-val"))
     }
     
-    
+    # Creates a list of plots for group comparisons
     plotList <- function(nplot) 
     {
       lapply(seq_len(nplot), createPlot)
     }
     
+    # Creates single plot containing all group comparison plots
     subplot(plotList(num_comparisons),
             shareX=TRUE,
             shareY=TRUE,
             titleX=TRUE,
             titleY=TRUE)
   })
-
-
-
-
-# Renders all outputs  ----
-output$data_tidy <- renderDataTable({
-  data_selected()
-})
-
-output$data_normalized <- renderDataTable({
-  data_normalized()
-})
-
-output$data_log_pval <- renderDataTable({
-  data_log_pval()
-})
-
-output$data_fc <- renderDataTable({
-  data_fc()
-})
-
-output$volcano <- renderPlotly({
-  volcano()
-})
-
-
+  
+  
+  
+  
+  # Renders all outputs  ----
+  # Renders prompts asking for sample names and TMT labels
+  output$tmt <- renderUI({
+    tmt_prompt()
+  })
+  
+  # Renders dataset with only protein abundances
+  output$data_tidy <- renderDataTable({
+    data_selected()
+  })
+  
+  # Renders dataset of protein abundances after being normalized about median
+  output$data_normalized <- renderDataTable({
+    data_normalized()
+  })
+  
+  # Renders table of -log10 pvals for all combinations of groups
+  output$data_log_pval <- renderDataTable({
+    data_log_pval()
+  })
+  
+  # Renders table of log2 fold-change for all combinations of gorups
+  output$data_fc <- renderDataTable({
+    data_fc()
+  })
+  
+  # Renders volcano plots for all combinations of groups
+  output$volcano <- renderPlotly({
+    volcano()
+  })
 }
 
 
-# Runs the app  ---
+# Runs the app   ----
 shinyApp(ui=ui, server=server)
