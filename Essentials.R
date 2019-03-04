@@ -1,6 +1,6 @@
 # Brandon Ng
 #
-# Essential packages
+# Script for downloading and installing packages
 
 
 # Installs Packages  ----
