@@ -10,7 +10,9 @@ Shiny app that creates volcano plots from TMT labeled experiments
 Troubleshooting Tips:
   a.) Check that the "Essentials" file being used is up to date and re-run the file
   b.) Make sure excel file in use does not have abundance ratios included
-  c.) Double check that the runGitHub command is typed out correctly
+  c.) Sample names should be at least 2 characters long
+  d.) Replicates within a group must have a number, 0-9, at the end of their sample name 
+  e.) Double check that the runGitHub command is typed out correctly
   
   
 Download Links
