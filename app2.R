@@ -6,8 +6,7 @@
 # Installs Packages  ----
 packages <- c("plyr", "tidyverse", "plotly", 
               "gridExtra", "ggseqlogo", "DT",
-              "RDocumentation", "runjags", "pracma",
-              "shiny", "data.table")
+              "RDocumentation", "runjags", "pracma", "shiny")
 
 for (i in seq_along(packages))
 {
@@ -33,7 +32,6 @@ library(DT)
 library(runjags)
 library(pracma)
 library(shiny)
-library(data.table)
 
 
 # T-test function  ----
@@ -52,13 +50,13 @@ pVal <- function(dt, grp1, grp2)
 }
 
 
-# Fold-change function  ----
+# Log2 fold-change function  ----
 foldChange <- function(dt, grp1, grp2)
 {
-  x <- dt[grp1] %>% unlist %>% as.numeric() %>% mean()
-  y <- dt[grp2] %>% unlist %>% as.numeric() %>% mean()
+  x <- dt[grp1] %>% unlist %>% as.numeric() %>% mean() %>% log2()
+  y <- dt[grp2] %>% unlist %>% as.numeric() %>% mean() %>% log2()
   
-  fold_change <- (x / y)
+  fold_change <- (x - y)
   return(fold_change)
 }
 
@@ -94,12 +92,12 @@ toAllGroups <- function(dat, num_repl, func)
       # Renames column heading
       names(result)[length(result)] <-
         paste(func_heading,
-              substr(names(dat[i]), 1, nchar(names(dat[i]))-1),
+              substr(names(dat[i]), 1, length(names(dat[i]))),
               "vs",
-              substr(names(dat[j]), 1, nchar(names(dat[j]))-1))
+              substr(names(dat[j]), 1, length(names(dat[j]))))
     }
   }
-  return(select(result,-1))
+  return(select(result, -1))
 }
 
 
@@ -127,20 +125,17 @@ ui <- fluidPage(
       # Stores excel data file
       fileInput("data", h4("Data File")),
       
-      # Stores tmt label map
-      fileInput("tmt", h4("Tmt Map")),
-      
       # Stores number of groups in experiment
-      numericInput("num_groups", h5("Number of Groups"),value=3,min=1),
+      numericInput("num_groups", h5("Number of Groups"), value=1, min=1),
       
       # Stores number of replicates per group
-      numericInput("num_replicates", h5("Replicates per Group"),value=3,min=1,max=9),
+      numericInput("num_replicates", h5("Replicates per Group"), value=1, min=1),
       
-      # Stores p-val threshold
       numericInput("pval_threshold", h5("Pval Threshold"), value=.05, min=0),
+      numericInput("fc_threshold", h5("Log2 Fold-change Threshold"), value=.5, min=0),
       
-      # Stores fold-change threshold
-      numericInput("fc_threshold", h5("Fold-change Threshold"), value=1.414, min=0)
+      # Updates user inputs
+      submitButton("Refresh", icon("refresh"))
     ),
     
     # Main panel for displaying outputs  ----
@@ -149,25 +144,27 @@ ui <- fluidPage(
       # Sets up different tabs
       tabsetPanel(type="tabs",
                   
-                  # Displays raw protein abundance values
+                  # Tab for inputing TMT Labels 
+                  tabPanel("TMT Label Map",
+                           uiOutput("tmt")),
+                  
                   tabPanel("Raw Data",
                            dataTableOutput("data_tidy")),
                   
-                  # Displays normalized protein abundance values
                   tabPanel("Normalized",
                            dataTableOutput("data_normalized")),
                   
-                  # Displays fold-change and pvals for all combinations of groups
-                  tabPanel("Fold-change & Pval",
-                           dataTableOutput("resorted_merge")),
+                  tabPanel("-Log10 Pval",
+                           dataTableOutput("data_log_pval")),
                   
-                  # Displays volcano plot for all combination of groups
+                  tabPanel("Log2 Fold-change",
+                           dataTableOutput("data_fc")),
+                  
                   tabPanel("Volcano",
                            plotlyOutput("volcano")),
                   
-                  # Displays miscellaneous statistical values
                   tabPanel("Misc",
-                           dataTableOutput("sig_prot"),
+                           textOutput("cv"),
                            textOutput("rsq"),
                            textOutput("num_protein")))
     )
@@ -184,10 +181,28 @@ server <- function(input, output)
   })
   
   
+  # Produces prompts to enter TMT mapping  ----
+  tmt_prompt <- reactive({
+    samples <- tagList()
+    for (i in 1:plex())
+    {
+      samples[[i]] <- tagList()
+      samples[[i]][[1]] <- textInput(letters[i], paste("Sample",i,"Name:"))
+      samples[[i]][[2]] <- textInput(letters[(i+plex())], paste("Sample",i,"Label:"))
+    }
+    samples
+  })
+  
+  
   # Gets sample names and labels user provided  ----
   getSamples <- reactive({
-    samples <- input$tmt$datapath %>% read_excel()
-    as.data.frame(samples)
+    samples <- as.data.frame(matrix(0,2,plex()))
+    for (i in 1:plex())
+    {
+      samples[i] <- c(input[[letters[i]]],
+                      input[[letters[(i+plex())]]])
+    }
+    samples
   })
   
   
@@ -206,11 +221,11 @@ server <- function(input, output)
     
     for (i in 1:ncol(dat))
     {
-      for (j in 1:nrow(samples))
+      for (j in 1:ncol(samples))
       {
-        if (grepl(samples[j,2], names(dat)[i], ignore.case=TRUE))
+        if (grepl(samples[2,j], names(dat)[i], ignore.case=TRUE))
         {
-          names(dat)[i] <- samples[j,1]
+          names(dat)[i] <- samples[1,j]
         }
       }
     }
@@ -224,10 +239,10 @@ server <- function(input, output)
     dat <- data_rename()
     selected <- as.data.frame(matrix(0,nrow(dat),plex()))
     
-    for (i in 1:nrow(samples))
+    for (i in 1:ncol(samples))
     {
-      names(selected)[i] <- samples[i,1]
-      selected[i] <- dat[samples[i,1]]
+      names(selected)[i] <- samples[1,i]
+      selected[i] <- dat[samples[1,i]]
     }
     selected
   })
@@ -236,6 +251,7 @@ server <- function(input, output)
   # Normalizes data about median  ----
   data_normalized <- reactive({
     dat <- data_selected()
+    samples <- getSamples()
     sums <- colSums(dat)
     median <- median(sums)
     percent_median <- median / sums
@@ -262,71 +278,34 @@ server <- function(input, output)
   })
   
   
-  # Calculates fold-change among all groups  ----
+  # Calculates log2 fold-change among all groups  ----
   data_fc <- reactive({
     toAllGroups(data_normalized(), input$num_replicates, "foldChange")
   })
   
   
-  # Calculates log2 of fold-change  ----
-  data_log_fc <- reactive({
-    log2(data_fc())
+  # Merges -log10 pval and log2 fold-change values together  ----
+  data_merged <- reactive({
+    data_fc <- data_fc()
+    data_log_pval <- data_log_pval()
+    cbind(data_fc, data_log_pval)
   })
   
   
   # Replaces NAN error values with 0  ----
-  data_rm_nan <- function(dat)
-  {
-    dat[is.nan(dat)] <- 0
-    return(dat)
-  }
-  
-  
-  # Merges datasets such that corresponding columns are next to each other  ----
-  # I.e. 1st column of dat2 is next to 1st column of dat1, etc...
-  merge <- function(dat1, dat2)
-  {
-    resorted <- as.data.frame(matrix(0,nrow(dat1)))
-    for (i in 1:ncol(dat1))
-    {
-      resorted[(length(resorted)+1)] <- dat1[i]
-      resorted[(length(resorted)+1)] <- dat2[i]
-    }
-    return(select(resorted,-1))
-  }
-  
-  
-  # Merges -log10 pval and log2 fold-change values together and binds protein description to beginning  ----
-  data_merged <- reactive({
-    raw_data <- data_rm0()
-    merged <- merge(data_log_fc(),data_log_pval()) %>% data_rm_nan()
-    cbind(raw_data["Description"],merged)
-  })
-
-  
-  # Determines proteins beyond pval and fold-change thresholds  ----
-  sig_prot <- reactive({
-    dat <- data_merged()
-    pval <- -log10(input$pval_threshold)
-    fc <- log2(input$fc_threshold)
-    
-    for (i in 1:ncol(dat))
-    {
-      names(dat)[i] <- letters[i]
-    }
-    
-    dat <- setDT(dat)
-    num_sig1 <- dat[((c > pval) & ((log2(b) > fc) | (log2(b) < -fc)))]
-    num_sig1
+  data_rm_nan <- reactive({
+    merged <- data_merged()
+    merged[is.nan(merged)] <- 0
+    merged
   })
   
   
   # Creates volcano plot  ----
   volcano <- reactive({
-    dat <- cbind(data_log_fc(),data_log_pval()) %>% data_rm_nan()
+    dat <- data_rm_nan()
     og_data <- data_rm0()
-    pval <- -log10(input$pval_threshold)
-    fc <- log2(input$fc_threshold)
+    pval <- input$pval_threshold
+    fc <- input$fc_threshold
     
     # Determines number of group comparisons
     num_comparisons <- ncol(dat) / 2
@@ -334,7 +313,7 @@ server <- function(input, output)
     # Attaches protein descriptions to the merged dataset
     # which contains fold-change and pval
     dat <- cbind(og_data["Description"], dat)
-    
+
     
     # Creates individual volcano plot
     createPlot <- function(index)
@@ -354,7 +333,7 @@ server <- function(input, output)
         
         # Creates a horiztonal line layered over the origianl
         # plot, representing the p-val threshold
-        add_lines(y=pval,
+        add_lines(y=(-log10(pval)),
                   line=list(color="pink"),
                   showlegend=FALSE,
                   hoverinfo= "text",
@@ -399,6 +378,10 @@ server <- function(input, output)
   
   
   # Renders all outputs  ----
+  # Renders prompts asking for sample names and TMT labels
+  output$tmt <- renderUI({
+    tmt_prompt()
+  })
   
   # Renders dataset with only protein abundances
   output$data_tidy <- renderDataTable({
@@ -410,20 +393,20 @@ server <- function(input, output)
     data_normalized()
   })
   
-  # Renders table of fold-changes & pvals for all combinations of groups
-  output$resorted_merge <- renderDataTable({
-    data_merged()
+  # Renders table of -log10 pvals for all combinations of groups
+  output$data_log_pval <- renderDataTable({
+    data_log_pval()
+  })
+  
+  # Renders table of log2 fold-change for all combinations of gorups
+  output$data_fc <- renderDataTable({
+    data_fc()
   })
   
   # Renders volcano plots for all combinations of groups
   output$volcano <- renderPlotly({
     volcano()
   })
-  
-  output$sig_prot <- renderDataTable({
-    sig_prot()
-  })
-  
 }
 
 

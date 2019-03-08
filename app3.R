@@ -110,6 +110,34 @@ is.nan.data.frame <- function(x)
 }
 
 
+# Replaces NAN error values with 0  ----
+data_rm_nan <- function(dat)
+{
+  dat[is.nan(dat)] <- 0
+  return(dat)
+}
+
+
+# Merges datasets such that corresponding columns are next to each other  ----
+# I.e. 1st column of dat2 is next to 1st column of dat1, etc...
+merge <- function(dat1, dat2)
+{
+  resorted <- as.data.frame(matrix(0,nrow(dat1)))
+  for (i in 1:ncol(dat1))
+  {
+    resorted[(length(resorted)+1)] <- dat1[i]
+    resorted[(length(resorted)+1)] <- dat2[i]
+  }
+  return(select(resorted,-1))
+}
+
+
+# Rounds values to desired number of decimal places  ----
+roundValues <- function(dat,x)
+{
+  mutate_all(dat, round, x)
+}
+
 
 
 # Defines UI  -----
@@ -140,7 +168,10 @@ ui <- fluidPage(
       numericInput("pval_threshold", h5("Pval Threshold"), value=.05, min=0),
       
       # Stores fold-change threshold
-      numericInput("fc_threshold", h5("Fold-change Threshold"), value=1.414, min=0)
+      numericInput("fc_threshold", h5("Fold-change Threshold"), value=1.414, min=0),
+      
+      # Text box detailing limitations to script
+      helpText("Data file should not contain abundance ratios")
     ),
     
     # Main panel for displaying outputs  ----
@@ -157,19 +188,21 @@ ui <- fluidPage(
                   tabPanel("Normalized",
                            dataTableOutput("data_normalized")),
                   
-                  # Displays fold-change and pvals for all combinations of groups
-                  tabPanel("Fold-change & Pval",
-                           dataTableOutput("resorted_merge")),
+                  # Displays log transform of fold-change and pvals for selected comparison group
+                  tabPanel("log2 Fold-change & -log10 Pval",
+                           uiOutput("comparison_group"),
+                           dataTableOutput("comparison_group_data")),
                   
                   # Displays volcano plot for all combination of groups
                   tabPanel("Volcano",
                            plotlyOutput("volcano")),
                   
                   # Displays miscellaneous statistical values
-                  tabPanel("Misc",
-                           dataTableOutput("sig_prot"),
-                           textOutput("rsq"),
-                           textOutput("num_protein")))
+                  tabPanel("Significant Proteins",
+                           uiOutput("sig_comparison_group"),
+                           dataTableOutput("sig_protein_data"))
+      )
+      
     )
   )
 )
@@ -274,51 +307,99 @@ server <- function(input, output)
   })
   
   
-  # Replaces NAN error values with 0  ----
-  data_rm_nan <- function(dat)
-  {
-    dat[is.nan(dat)] <- 0
-    return(dat)
-  }
-  
-  
-  # Merges datasets such that corresponding columns are next to each other  ----
-  # I.e. 1st column of dat2 is next to 1st column of dat1, etc...
-  merge <- function(dat1, dat2)
-  {
-    resorted <- as.data.frame(matrix(0,nrow(dat1)))
-    for (i in 1:ncol(dat1))
-    {
-      resorted[(length(resorted)+1)] <- dat1[i]
-      resorted[(length(resorted)+1)] <- dat2[i]
-    }
-    return(select(resorted,-1))
-  }
-  
-  
-  # Merges -log10 pval and log2 fold-change values together and binds protein description to beginning  ----
-  data_merged <- reactive({
-    raw_data <- data_rm0()
-    merged <- merge(data_log_fc(),data_log_pval()) %>% data_rm_nan()
-    cbind(raw_data["Description"],merged)
+  # Determines names of all comparison groups  ----
+  getComparisonNames <- reactive({
+    names <- colnames(data_fc())
+    # Removes "fold-change" originally found in column names
+    names <- lapply(names, function(x) {substr(x,12,nchar(x))})
+    names
   })
-
+  
+  
+  # Produces prompt to select which comparison group to view  ----
+  comparison_group_prompt <- reactive({
+    names <- cbind(getComparisonNames(),"all")
+    selectInput("compare_group","Comparison Group:",
+                choices=names)
+  })
+  
+  
+  # Produces prompt to select which comparison group to view w/o "all" option ----
+  sig_comparison_prompt <- reactive({
+    names <- getComparisonNames()
+    selectInput("sig_compare_group","Comparison Group:",
+                choices=names)
+  })
+  
+  
+  # Produces data table of pval & fc of selected comparison group  ----
+  comparison_group_data <- reactive({
+    comp_grp <- input$compare_group
+    raw_data <- data_rm0()
+    fc_data <- data_log_fc()
+    pval_data <- data_log_pval()
+    
+    if (input$compare_group == "all")
+    {
+      merged <- merge(fc_data,pval_data) %>% data_rm_nan() %>% roundValues(.,4)
+      comp_group_data <- cbind(raw_data["Description"],merged)
+    }
+    else
+    {
+      for (i in 1:ncol(fc_data))
+      {
+        if (grepl(comp_grp, names(fc_data)[i], ignore.case=TRUE))
+        {
+          merged <- cbind(fc_data[i],pval_data[i]) %>% data_rm_nan() %>% roundValues(.,4)
+          comp_group_data <- cbind(raw_data["Description"],merged)
+        }
+      }
+    }
+    comp_group_data
+  })
+  
+  
+  # Produces data table of significant proteins  ----
+  sig_protein_data <- reactive({
+    comp_grp <- input$sig_compare_group
+    raw_data <- data_rm0()
+    fc_data <- data_log_fc()
+    pval_data <- data_log_pval()
+    
+    for (i in 1:ncol(fc_data))
+    {
+      if (grepl(comp_grp, names(fc_data)[i], ignore.case=TRUE))
+      {
+        sig_protein <- getSigProt(cbind(raw_data["Description"],fc_data[i],pval_data[i]))
+      }
+    }
+    sig_protein
+  })
   
   # Determines proteins beyond pval and fold-change thresholds  ----
-  sig_prot <- reactive({
-    dat <- data_merged()
-    pval <- -log10(input$pval_threshold)
+  getSigProt <- function(dat)
+  {
     fc <- log2(input$fc_threshold)
+    pval <- -log10(input$pval_threshold)
+    fc_name <- names(dat)[2]
+    pval_name <- names(dat)[3]
+    keep <- 0
     
-    for (i in 1:ncol(dat))
+    for (i in 1:nrow(dat))
     {
-      names(dat)[i] <- letters[i]
+      if (dat[i,2] > pval & (dat[i,3] > fc | dat[i,3] < -fc))
+      {
+        keep <- c(keep,i)
+      }
     }
-    
-    dat <- setDT(dat)
-    num_sig1 <- dat[((c > pval) & ((log2(b) > fc) | (log2(b) < -fc)))]
-    num_sig1
-  })
+    return(dat[keep])
+  }
+  
+  
+  
+  
+  
+  
   
   
   # Creates volcano plot  ----
@@ -336,7 +417,7 @@ server <- function(input, output)
     dat <- cbind(og_data["Description"], dat)
     
     
-    # Creates individual volcano plot
+    # Creates individual volcano plot  ----
     createPlot <- function(index)
     {
       # plot_ly: Plots fold-change on x-axis and pval on y-axis
@@ -407,12 +488,17 @@ server <- function(input, output)
   
   # Renders dataset of protein abundances after being normalized about median
   output$data_normalized <- renderDataTable({
-    data_normalized()
+    roundValues(data_normalized(),3)
   })
   
-  # Renders table of fold-changes & pvals for all combinations of groups
-  output$resorted_merge <- renderDataTable({
-    data_merged()
+  # Renders prompt to select comparison group
+  output$comparison_group <- renderUI({
+    comparison_group_prompt()
+  })
+  
+  # Renders table of fold-changes & pvals for selected comparison group
+  output$comparison_group_data <- renderDataTable({
+    comparison_group_data()
   })
   
   # Renders volcano plots for all combinations of groups
@@ -420,8 +506,14 @@ server <- function(input, output)
     volcano()
   })
   
-  output$sig_prot <- renderDataTable({
-    sig_prot()
+  # Renders prompt to select comparison group for significant protein
+  output$sig_comparison_group <- renderUI({
+    sig_comparison_prompt()
+  })
+  
+  # Renders table of significant proteins
+  output$sig_protein_data <- renderDataTable({
+    sig_protein_data()
   })
   
 }
