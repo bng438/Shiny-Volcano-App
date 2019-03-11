@@ -189,7 +189,7 @@ ui <- fluidPage(
                            dataTableOutput("data_normalized")),
                   
                   # Displays log transform of fold-change and pvals for selected comparison group
-                  tabPanel("log2 Fold-change & -log10 Pval",
+                  tabPanel("Fold-change & Pval",
                            uiOutput("comparison_group"),
                            dataTableOutput("comparison_group_data")),
                   
