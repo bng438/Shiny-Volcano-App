@@ -144,7 +144,7 @@ roundValues <- function(dat,x)
 ui <- fluidPage(
   
   # Title
-  titlePanel("Volcano Plot"),
+  titlePanel("TMT Statistical Analysis"),
   
   # Creates sidebar layout with input and output definitions
   sidebarLayout(
