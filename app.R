@@ -111,7 +111,7 @@ is.nan.data.frame <- function(x)
 
 
 # Replaces NAN error values with 0  ----
-data_rm_nan <- function(dat)
+removeNan <- function(dat)
 {
   dat[is.nan(dat)] <- 0
   return(dat)
@@ -188,7 +188,7 @@ ui <- fluidPage(
                   tabPanel("Normalized",
                            dataTableOutput("data_normalized")),
                   
-                  # Displays log transform of fold-change and pvals for selected comparison group
+                  # Displays fold-change and pvals for selected comparison group
                   tabPanel("Fold-change & Pval",
                            uiOutput("comparison_group"),
                            dataTableOutput("comparison_group_data")),
@@ -197,10 +197,14 @@ ui <- fluidPage(
                   tabPanel("Volcano",
                            plotlyOutput("volcano")),
                   
-                  # Displays miscellaneous statistical values
+                  # Displays significant proteins
                   tabPanel("Significant Proteins",
                            uiOutput("sig_comparison_group"),
-                           dataTableOutput("sig_protein_data"))
+                           dataTableOutput("sig_protein_data")),
+                  
+                  # Displays miscellaneous statistical values
+                  tabPanel("Misc",
+                           dataTableOutput("percent_median"))
       )
       
     )
@@ -307,97 +311,9 @@ server <- function(input, output)
   })
   
   
-  # Determines names of all comparison groups  ----
-  getComparisonNames <- reactive({
-    names <- colnames(data_fc())
-    # Removes "fold-change" originally found in column names
-    names <- lapply(names, function(x) {substr(x,12,nchar(x))})
-    names
-  })
-  
-  
-  # Produces prompt to select which comparison group to view  ----
-  comparison_group_prompt <- reactive({
-    names <- cbind(getComparisonNames(),"all")
-    selectInput("compare_group","Comparison Group:",
-                choices=names)
-  })
-  
-  
-  # Produces prompt to select which comparison group to view w/o "all" option ----
-  sig_comparison_prompt <- reactive({
-    names <- getComparisonNames()
-    selectInput("sig_compare_group","Comparison Group:",
-                choices=names)
-  })
-  
-  
-  # Produces data table of pval & fc of selected comparison group  ----
-  comparison_group_data <- reactive({
-    comp_grp <- input$compare_group
-    raw_data <- data_rm0()
-    fc_data <- data_fc()
-    pval_data <- data_pval()
-    
-    if (input$compare_group == "all")
-    {
-      merged <- merge(fc_data,pval_data) %>% data_rm_nan() %>% roundValues(.,4)
-      comp_group_data <- cbind(raw_data["Description"],merged)
-    }
-    else
-    {
-      for (i in 1:ncol(fc_data))
-      {
-        if (grepl(comp_grp, names(fc_data)[i], ignore.case=TRUE))
-        {
-          merged <- cbind(fc_data[i],pval_data[i]) %>% data_rm_nan() %>% roundValues(.,4)
-          comp_group_data <- cbind(raw_data["Description"],merged)
-        }
-      }
-    }
-    comp_group_data
-  })
-  
-  
-  # Produces data table of significant proteins  ----
-  sig_protein_data <- reactive({
-    comp_grp <- input$sig_compare_group
-    raw_data <- data_rm0()
-    fc_data <- data_fc() %>% data_rm_nan() %>% roundValues(.,4)
-    pval_data <- data_pval() %>% data_rm_nan() %>% roundValues(.,4)
-    
-    for (i in 1:ncol(fc_data))
-    {
-      if (grepl(comp_grp, names(fc_data)[i], ignore.case=TRUE))
-      {
-        sig_protein <- getSigProt(cbind(raw_data["Description"],fc_data[i],pval_data[i]))
-      }
-    }
-    write.csv(sig_protein,file=paste(comp_grp,".csv"))
-    sig_protein
-  })
-  
-  # Determines proteins beyond pval and fold-change thresholds  ----
-  getSigProt <- function(dat)
-  {
-    fc <- input$fc_threshold
-    pval <- input$pval_threshold
-    keep <- 0
-    
-    for (i in 1:nrow(dat))
-    {
-      if (dat[i,3] < pval & (dat[i,2] > fc | dat[i,2] < (1/fc)) & (dat[i,2] != 0))
-      {
-        keep <- c(keep,i)
-      }
-    }
-    return(dat[keep,])
-  }
-
-  
   # Creates volcano plot  ----
   volcano <- reactive({
-    dat <- cbind(data_log_fc(),data_log_pval()) %>% data_rm_nan()
+    dat <- cbind(data_log_fc(),data_log_pval()) %>% removeNan()
     og_data <- data_rm0()
     pval <- -log10(input$pval_threshold)
     fc <- log2(input$fc_threshold)
@@ -470,6 +386,114 @@ server <- function(input, output)
   })
   
   
+  # Determines names of all comparison groups  ----
+  getComparisonNames <- reactive({
+    names <- colnames(data_fc())
+    # Removes "fold-change" originally found in column names
+    names <- lapply(names, function(x) {substr(x,12,nchar(x))})
+    names
+  })
+  
+  
+  # Produces prompt to select which comparison group to view  ----
+  comparison_group_prompt <- reactive({
+    names <- cbind(getComparisonNames(),"all")
+    selectInput("compare_group","Comparison Group:",
+                choices=names)
+  })
+  
+  
+  # Produces prompt to select which comparison group to view w/o "all" option ----
+  sig_comparison_prompt <- reactive({
+    names <- getComparisonNames()
+    selectInput("sig_compare_group","Comparison Group:",
+                choices=names)
+  })
+  
+  
+  # Produces data table of pval & fc of selected comparison group  ----
+  comparison_group_data <- reactive({
+    
+    # Selected comparison group
+    comp_grp <- input$compare_group
+    
+    # Data set containing protein description
+    raw_data <- data_rm0()
+    
+    fc_data <- data_fc()
+    pval_data <- data_pval()
+    
+    if (input$compare_group == "all")
+    {
+      # Merge function puts corresponding pvals next to corresponding fold-changes
+      merged <- merge(fc_data,pval_data) %>% removeNan() %>% roundValues(.,4)
+      comp_group_data <- cbind(raw_data["Description"],merged)
+    }
+    else
+    {
+      # Determines which comparison group user selected
+      for (i in 1:ncol(fc_data))
+      {
+        if (grepl(comp_grp, names(fc_data)[i], ignore.case=TRUE))
+        {
+          merged <- cbind(fc_data[i],pval_data[i]) %>% removeNan() %>% roundValues(.,4)
+          comp_group_data <- cbind(raw_data["Description"],merged)
+        }
+      }
+    }
+    comp_group_data
+  })
+  
+  
+  # Produces data table of significant proteins  ----
+  sig_protein_data <- reactive({
+    
+    # Selected comparison group
+    comp_grp <- input$sig_compare_group
+    
+    # Data set containing protein description
+    raw_data <- data_rm0()
+    
+    fc_data <- data_fc() %>% removeNan() %>% roundValues(.,4)
+    pval_data <- data_pval() %>% removeNan() %>% roundValues(.,4)
+    
+    # Determines which comparison group user selected
+    for (i in 1:ncol(fc_data))
+    {
+      if (grepl(comp_grp, names(fc_data)[i], ignore.case=TRUE))
+      {
+        sig_protein <- getSigProt(cbind(raw_data["Description"],fc_data[i],pval_data[i]))
+      }
+    }
+    # write.csv(sig_protein,file=paste(comp_grp,".csv"))
+    sig_protein
+  })
+  
+  # Determines proteins beyond pval and fold-change thresholds  ----
+  getSigProt <- function(dat)
+  {
+    fc <- input$fc_threshold
+    pval <- input$pval_threshold
+    keep <- 0
+    
+    for (i in 1:nrow(dat))
+    {
+      if (dat[i,3] < pval & (dat[i,2] > fc | dat[i,2] < 1/fc) & (dat[i,2] != 0))
+      {
+        keep <- c(keep,i)
+      }
+    }
+    return(dat[keep,])
+  }
+  
+  # Misc.: Determines percent median of all samples  ----
+  percent_median <- reactive({
+    dat <- data_selected()
+    sums <- colSums(dat)
+    median <- median(sums)
+    percent_median <- median / sums
+    as.data.frame(percent_median)
+  })
   
   
   # Renders all outputs  ----
@@ -507,6 +531,11 @@ server <- function(input, output)
   # Renders table of significant proteins
   output$sig_protein_data <- renderDataTable({
     sig_protein_data()
+  })
+  
+  # Renders table of pecent medians of all samples
+  output$percent_median <- renderDataTable({
+    percent_median()
   })
   
 }
